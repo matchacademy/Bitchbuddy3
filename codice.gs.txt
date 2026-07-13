@@ -1,0 +1,525 @@
+/**
+ * ============================================================
+ *  ESAMI & COMPAGNI — Backend (Google Apps Script + Sheets)
+ * ============================================================
+ * Un solo Google Sheet fa da database. Lo script deve essere
+ * "Container-bound" a quel foglio (Estensioni > Apps Script).
+ *
+ * Fogli richiesti (creali con setupSpreadsheet(), vedi in fondo):
+ *   - Utenti
+ *   - Catalogo_Accademico
+ *   - Piani_Studio
+ *   - Domande_FAQ
+ *   - Messaggi
+ *   - Sessioni
+ * ============================================================
+ */
+
+const SHEETS = {
+  UTENTI: 'Utenti',
+  CATALOGO: 'Catalogo_Accademico',
+  PIANI: 'Piani_Studio',
+  FAQ: 'Domande_FAQ',
+  MESSAGGI: 'Messaggi',
+  SESSIONI: 'Sessioni'
+};
+
+const SESSION_HOURS = 72;
+
+const STATI_VALIDI = ['Da preparare', 'In preparazione', 'Ripetizione', 'Fase finale'];
+
+/* ============================================================
+ *  ENTRY POINT WEB APP
+ * ============================================================ */
+
+function doGet(e) {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('Esami & Compagni')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Permette di dividere l'HTML in partial con <?!= include('Nome') ?>
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+/* ============================================================
+ *  HELPER GENERICI SUI FOGLI
+ * ============================================================ */
+
+function ss_() {
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function sheet_(name) {
+  const sh = ss_().getSheetByName(name);
+  if (!sh) throw new Error('Foglio mancante: "' + name + '". Esegui setupSpreadsheet() dall\'editor Apps Script.');
+  return sh;
+}
+
+function headers_(sheet) {
+  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+}
+
+function rowsToObjects_(sheet) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const headers = data.shift();
+  return data.map(function (row, i) {
+    const obj = {};
+    headers.forEach(function (h, idx) { obj[h] = row[idx]; });
+    obj._row = i + 2; // riga reale nel foglio (1-based, +1 per header)
+    return obj;
+  });
+}
+
+function appendObject_(sheet, obj) {
+  const headers = headers_(sheet);
+  const row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+  sheet.appendRow(row);
+}
+
+function findRowIndexByField_(sheet, field, value) {
+  const headers = headers_(sheet);
+  const col = headers.indexOf(field);
+  if (col === -1) return -1;
+  const data = sheet.getDataRange().getValues();
+  for (let r = 1; r < data.length; r++) {
+    if (String(data[r][col]) === String(value)) return r + 1; // 1-based row
+  }
+  return -1;
+}
+
+function updateRowByField_(sheetName, field, value, updates) {
+  const sheet = sheet_(sheetName);
+  const rowIdx = findRowIndexByField_(sheet, field, value);
+  if (rowIdx === -1) return false;
+  const headers = headers_(sheet);
+  Object.keys(updates).forEach(function (key) {
+    const c = headers.indexOf(key);
+    if (c > -1) sheet.getRange(rowIdx, c + 1).setValue(updates[key]);
+  });
+  return true;
+}
+
+function deleteRowByField_(sheetName, field, value) {
+  const sheet = sheet_(sheetName);
+  const rowIdx = findRowIndexByField_(sheet, field, value);
+  if (rowIdx === -1) return false;
+  sheet.deleteRow(rowIdx);
+  return true;
+}
+
+function newId_(prefix) {
+  return prefix + '_' + Utilities.getUuid().split('-')[0];
+}
+
+function requireFields_(payload, fields) {
+  fields.forEach(function (f) {
+    if (payload[f] === undefined || payload[f] === null || String(payload[f]).trim() === '') {
+      throw new Error('Campo obbligatorio mancante: ' + f);
+    }
+  });
+}
+
+/* ============================================================
+ *  AUTENTICAZIONE
+ * ============================================================
+ *  NB: per un progetto Sheets/GAS non esiste una gestione
+ *  password "sicura" allo stesso livello di un backend dedicato.
+ *  L'hash SHA-256 con salt qui sotto alza l'asticella rispetto al
+ *  testo in chiaro, ma il consiglio resta: quando possibile fai
+ *  autenticare gli utenti con Google (loginWithGoogle), che non
+ *  richiede di gestire alcuna password lato foglio.
+ * ============================================================ */
+
+function hashPassword_(password, salt) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + salt);
+  return digest.map(function (b) { return (b < 0 ? b + 256 : b).toString(16).padStart(2, '0'); }).join('');
+}
+
+function createSession_(userId) {
+  const sheet = sheet_(SHEETS.SESSIONI);
+  const token = Utilities.getUuid();
+  const scadenza = new Date(Date.now() + SESSION_HOURS * 3600 * 1000);
+  appendObject_(sheet, { Token: token, ID_Utente: userId, Scadenza: scadenza });
+  return token;
+}
+
+function validateSession_(token) {
+  if (!token) throw new Error('Sessione mancante: effettua di nuovo il login.');
+  const sessioni = rowsToObjects_(sheet_(SHEETS.SESSIONI));
+  const sess = sessioni.find(function (s) { return s.Token === token; });
+  if (!sess) throw new Error('Sessione non valida: effettua di nuovo il login.');
+  if (new Date(sess.Scadenza).getTime() < Date.now()) {
+    deleteRowByField_(SHEETS.SESSIONI, 'Token', token);
+    throw new Error('Sessione scaduta: effettua di nuovo il login.');
+  }
+  return sess.ID_Utente;
+}
+
+function logoutUser(token) {
+  deleteRowByField_(SHEETS.SESSIONI, 'Token', token);
+  return { ok: true };
+}
+
+function publicUser_(u) {
+  return {
+    ID_Utente: u.ID_Utente,
+    Nome: u.Nome,
+    Email: u.Email,
+    Telegram_Username: u.Telegram_Username,
+    WhatsApp_Link: u.WhatsApp_Link,
+    Privacy_Status: u.Privacy_Status,
+    Auth_Provider: u.Auth_Provider
+  };
+}
+
+function registerUser(payload) {
+  requireFields_(payload, ['nome', 'email', 'password']);
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  const email = String(payload.email).trim().toLowerCase();
+  if (utenti.some(function (u) { return String(u.Email).toLowerCase() === email; })) {
+    throw new Error('Esiste già un account con questa email.');
+  }
+  const salt = Utilities.getUuid();
+  const userId = newId_('U');
+  appendObject_(sheet_(SHEETS.UTENTI), {
+    ID_Utente: userId,
+    Nome: payload.nome,
+    Email: email,
+    Password_Hash: hashPassword_(payload.password, salt),
+    Salt: salt,
+    Auth_Provider: 'standard',
+    Telegram_Username: payload.telegram || '',
+    WhatsApp_Link: payload.whatsapp || '',
+    Privacy_Status: 'Pubblico',
+    Data_Registrazione: new Date()
+  });
+  const token = createSession_(userId);
+  return { token: token, user: publicUser_({ ID_Utente: userId, Nome: payload.nome, Email: email, Auth_Provider: 'standard' }) };
+}
+
+function loginUser(email, password) {
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  const u = utenti.find(function (x) { return String(x.Email).toLowerCase() === String(email).trim().toLowerCase(); });
+  if (!u || u.Auth_Provider !== 'standard') throw new Error('Credenziali non valide.');
+  if (hashPassword_(password, u.Salt) !== u.Password_Hash) throw new Error('Credenziali non valide.');
+  const token = createSession_(u.ID_Utente);
+  return { token: token, user: publicUser_(u) };
+}
+
+// Login/registrazione con Google: usa l'identità dell'utente già loggato
+// nel browser (Session.getActiveUser). Funziona quando il web app è
+// distribuito con accesso "Chiunque abbia un account Google".
+function loginWithGoogle() {
+  const email = Session.getActiveUser().getEmail();
+  if (!email) throw new Error('Impossibile leggere l\'account Google. Assicurati che la Web App sia distribuita con accesso Google.');
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  let u = utenti.find(function (x) { return String(x.Email).toLowerCase() === email.toLowerCase(); });
+  if (!u) {
+    const userId = newId_('U');
+    const nome = email.split('@')[0];
+    appendObject_(sheet_(SHEETS.UTENTI), {
+      ID_Utente: userId, Nome: nome, Email: email, Password_Hash: '', Salt: '',
+      Auth_Provider: 'google', Telegram_Username: '', WhatsApp_Link: '',
+      Privacy_Status: 'Pubblico', Data_Registrazione: new Date()
+    });
+    u = { ID_Utente: userId, Nome: nome, Email: email, Auth_Provider: 'google' };
+  }
+  const token = createSession_(u.ID_Utente);
+  return { token: token, user: publicUser_(u) };
+}
+
+function getCurrentUser(token) {
+  const userId = validateSession_(token);
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  const u = utenti.find(function (x) { return x.ID_Utente === userId; });
+  if (!u) throw new Error('Utente non trovato.');
+  return publicUser_(u);
+}
+
+/* ============================================================
+ *  CATALOGO ACCADEMICO — menu a cascata Corso -> Materia -> Prof
+ * ============================================================ */
+
+function getCatalogo() {
+  const righe = rowsToObjects_(sheet_(SHEETS.CATALOGO));
+  const corsi = {}; // { NomeCorso: { NomeMateria: Set(professori) } }
+  righe.forEach(function (r) {
+    const corso = r.Nome_Corso, materia = r.Materia, prof = r.Professore;
+    if (!corso || !materia) return;
+    if (!corsi[corso]) corsi[corso] = {};
+    if (!corsi[corso][materia]) corsi[corso][materia] = [];
+    if (prof && corsi[corso][materia].indexOf(prof) === -1) corsi[corso][materia].push(prof);
+  });
+  // Converte in struttura serializzabile e ordinata
+  const out = {};
+  Object.keys(corsi).sort().forEach(function (corso) {
+    out[corso] = {};
+    Object.keys(corsi[corso]).sort().forEach(function (materia) {
+      out[corso][materia] = corsi[corso][materia].sort();
+    });
+  });
+  return out;
+}
+
+/* ============================================================
+ *  PIANI DI STUDIO (le materie dell'utente loggato)
+ * ============================================================ */
+
+function getPianiStudio(token) {
+  const userId = validateSession_(token);
+  return rowsToObjects_(sheet_(SHEETS.PIANI))
+    .filter(function (p) { return p.ID_Utente === userId; })
+    .sort(function (a, b) {
+      // ordina per data esame più vicina (senza data in fondo)
+      const da = a.Data_Esame ? new Date(a.Data_Esame).getTime() : Infinity;
+      const db = b.Data_Esame ? new Date(b.Data_Esame).getTime() : Infinity;
+      return da - db;
+    });
+}
+
+function addMateria(token, data) {
+  const userId = validateSession_(token);
+  requireFields_(data, ['materia', 'stato']);
+  if (STATI_VALIDI.indexOf(data.stato) === -1) throw new Error('Stato non valido.');
+  const id = newId_('P');
+  appendObject_(sheet_(SHEETS.PIANI), {
+    ID_Record: id, ID_Utente: userId, Materia: data.materia,
+    Stato: data.stato, Note: data.note || '', Data_Esame: data.dataEsame || ''
+  });
+  return { id: id };
+}
+
+function updateStato(token, idRecord, stato) {
+  const userId = validateSession_(token);
+  if (STATI_VALIDI.indexOf(stato) === -1) throw new Error('Stato non valido.');
+  assertOwnsRecord_(SHEETS.PIANI, 'ID_Record', idRecord, userId);
+  return { ok: updateRowByField_(SHEETS.PIANI, 'ID_Record', idRecord, { Stato: stato }) };
+}
+
+function updateNote(token, idRecord, note) {
+  const userId = validateSession_(token);
+  assertOwnsRecord_(SHEETS.PIANI, 'ID_Record', idRecord, userId);
+  return { ok: updateRowByField_(SHEETS.PIANI, 'ID_Record', idRecord, { Note: note }) };
+}
+
+function updateDataEsame(token, idRecord, dataEsame) {
+  const userId = validateSession_(token);
+  assertOwnsRecord_(SHEETS.PIANI, 'ID_Record', idRecord, userId);
+  return { ok: updateRowByField_(SHEETS.PIANI, 'ID_Record', idRecord, { Data_Esame: dataEsame }) };
+}
+
+function deleteMateria(token, idRecord) {
+  const userId = validateSession_(token);
+  assertOwnsRecord_(SHEETS.PIANI, 'ID_Record', idRecord, userId);
+  return { ok: deleteRowByField_(SHEETS.PIANI, 'ID_Record', idRecord) };
+}
+
+function assertOwnsRecord_(sheetName, field, value, userId) {
+  const rows = rowsToObjects_(sheet_(sheetName));
+  const rec = rows.find(function (r) { return r[field] === value; });
+  if (!rec || rec.ID_Utente !== userId) throw new Error('Operazione non consentita.');
+}
+
+// Crea un evento su Google Calendar per la data dell'esame
+function addEsameToCalendar(token, idRecord) {
+  const userId = validateSession_(token);
+  const rows = rowsToObjects_(sheet_(SHEETS.PIANI));
+  const rec = rows.find(function (r) { return r.ID_Record === idRecord; });
+  if (!rec || rec.ID_Utente !== userId) throw new Error('Materia non trovata.');
+  if (!rec.Data_Esame) throw new Error('Imposta prima una data esame.');
+  const data = new Date(rec.Data_Esame);
+  const cal = CalendarApp.getDefaultCalendar();
+  const evento = cal.createAllDayEvent('Esame: ' + rec.Materia, data, {
+    description: 'Nota: ' + (rec.Note || '')
+  });
+  evento.addPopupReminder(24 * 60);
+  return { ok: true, eventId: evento.getId() };
+}
+
+/* ============================================================
+ *  FAQ PER MATERIA
+ * ============================================================ */
+
+function getFaqByMateria(materia) {
+  return rowsToObjects_(sheet_(SHEETS.FAQ))
+    .filter(function (f) { return f.Materia === materia; })
+    .sort(function (a, b) { return (Number(b.Upvotes) || 0) - (Number(a.Upvotes) || 0); });
+}
+
+function addDomanda(token, materia, testo) {
+  const userId = validateSession_(token);
+  if (!testo || !String(testo).trim()) throw new Error('Scrivi una domanda prima di inviarla.');
+  const id = newId_('Q');
+  appendObject_(sheet_(SHEETS.FAQ), {
+    ID_Domanda: id, Materia: materia, Testo_Domanda: testo,
+    ID_Utente_Autore: userId, Upvotes: 0, Data: new Date()
+  });
+  return { id: id };
+}
+
+function upvoteDomanda(token, idDomanda) {
+  validateSession_(token); // solo utenti registrati
+  const rows = rowsToObjects_(sheet_(SHEETS.FAQ));
+  const rec = rows.find(function (r) { return r.ID_Domanda === idDomanda; });
+  if (!rec) throw new Error('Domanda non trovata.');
+  const nuovo = (Number(rec.Upvotes) || 0) + 1;
+  updateRowByField_(SHEETS.FAQ, 'ID_Domanda', idDomanda, { Upvotes: nuovo });
+  return { upvotes: nuovo };
+}
+
+/* ============================================================
+ *  COMPAGNI DI STUDIO
+ * ============================================================ */
+
+function getCompagniByMateria(token, materia, filtroStato) {
+  const userId = validateSession_(token); // sola lettura dati richiede login
+  const piani = rowsToObjects_(sheet_(SHEETS.PIANI)).filter(function (p) {
+    return p.Materia === materia && p.ID_Utente !== userId && (!filtroStato || p.Stato === filtroStato);
+  });
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  return piani.map(function (p) {
+    const u = utenti.find(function (x) { return x.ID_Utente === p.ID_Utente; });
+    if (!u) return null;
+    return {
+      ID_Utente: u.ID_Utente,
+      Nome: u.Nome,
+      Stato: p.Stato,
+      Privacy_Status: u.Privacy_Status,
+      Telegram_Username: u.Privacy_Status === 'Pubblico' ? u.Telegram_Username : '',
+      WhatsApp_Link: u.Privacy_Status === 'Pubblico' ? u.WhatsApp_Link : ''
+    };
+  }).filter(Boolean);
+}
+
+/* ============================================================
+ *  MESSAGGISTICA INTERNA
+ * ============================================================ */
+
+function getConversazione(token, altroId) {
+  const userId = validateSession_(token);
+  return rowsToObjects_(sheet_(SHEETS.MESSAGGI))
+    .filter(function (m) {
+      return (m.ID_Mittente === userId && m.ID_Destinatario === altroId) ||
+             (m.ID_Mittente === altroId && m.ID_Destinatario === userId);
+    })
+    .sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); });
+}
+
+function inviaMessaggio(token, destinatarioId, testo) {
+  const userId = validateSession_(token);
+  if (!testo || !String(testo).trim()) throw new Error('Il messaggio è vuoto.');
+  const id = newId_('M');
+  appendObject_(sheet_(SHEETS.MESSAGGI), {
+    ID_Messaggio: id, ID_Mittente: userId, ID_Destinatario: destinatarioId,
+    Testo: testo, Timestamp: new Date(), Letto: false
+  });
+  return { id: id };
+}
+
+function getConversazioniRecenti(token) {
+  const userId = validateSession_(token);
+  const msgs = rowsToObjects_(sheet_(SHEETS.MESSAGGI)).filter(function (m) {
+    return m.ID_Mittente === userId || m.ID_Destinatario === userId;
+  });
+  const utenti = rowsToObjects_(sheet_(SHEETS.UTENTI));
+  const perAltro = {};
+  msgs.forEach(function (m) {
+    const altroId = m.ID_Mittente === userId ? m.ID_Destinatario : m.ID_Mittente;
+    const t = new Date(m.Timestamp).getTime();
+    if (!perAltro[altroId] || t > perAltro[altroId].t) {
+      perAltro[altroId] = { t: t, ultimo: m.Testo };
+    }
+  });
+  return Object.keys(perAltro).map(function (altroId) {
+    const u = utenti.find(function (x) { return x.ID_Utente === altroId; });
+    return { ID_Utente: altroId, Nome: u ? u.Nome : 'Utente', ultimo: perAltro[altroId].ultimo, quando: new Date(perAltro[altroId].t) };
+  }).sort(function (a, b) { return b.quando - a.quando; });
+}
+
+/* ============================================================
+ *  PROFILO / IMPOSTAZIONI
+ * ============================================================ */
+
+function getProfilo(token) {
+  return getCurrentUser(token);
+}
+
+function updateProfilo(token, data) {
+  const userId = validateSession_(token);
+  const updates = {};
+  if (data.nome) updates.Nome = data.nome;
+  if (data.telegram !== undefined) updates.Telegram_Username = data.telegram;
+  if (data.whatsapp !== undefined) updates.WhatsApp_Link = data.whatsapp;
+  if (data.privacy) updates.Privacy_Status = data.privacy; // 'Pubblico' | 'Privato'
+  updateRowByField_(SHEETS.UTENTI, 'ID_Utente', userId, updates);
+  return getCurrentUser(token);
+}
+
+/* ============================================================
+ *  DATI DEMO PER L'ACCESSO GUEST (sola lettura, nessun foglio)
+ * ============================================================ */
+
+function getDemoData() {
+  return {
+    catalogo: {
+      'Informatica': {
+        'Basi di Dati': ['Prof. Rossi'],
+        'Algoritmi': ['Prof. Bianchi']
+      }
+    },
+    piani: [
+      { ID_Record: 'demo1', Materia: 'Basi di Dati', Stato: 'In preparazione', Note: 'Ripassare le JOIN', Data_Esame: '' },
+      { ID_Record: 'demo2', Materia: 'Algoritmi', Stato: 'Da preparare', Note: '', Data_Esame: '' }
+    ],
+    faq: [
+      { ID_Domanda: 'demoq1', Materia: 'Basi di Dati', Testo_Domanda: 'Chiede la normalizzazione all\'orale?', Upvotes: 4 }
+    ]
+  };
+}
+
+/* ============================================================
+ *  SETUP — eseguire UNA VOLTA dall'editor Apps Script
+ *  (seleziona la funzione "setupSpreadsheet" e premi Esegui)
+ * ============================================================ */
+
+function setupSpreadsheet() {
+  const spreadsheet = ss_();
+
+  const schema = {
+    Utenti: ['ID_Utente', 'Nome', 'Email', 'Password_Hash', 'Salt', 'Auth_Provider', 'Telegram_Username', 'WhatsApp_Link', 'Privacy_Status', 'Data_Registrazione'],
+    Catalogo_Accademico: ['ID_Corso', 'Nome_Corso', 'Materia', 'Professore'],
+    Piani_Studio: ['ID_Record', 'ID_Utente', 'Materia', 'Stato', 'Note', 'Data_Esame'],
+    Domande_FAQ: ['ID_Domanda', 'Materia', 'Testo_Domanda', 'ID_Utente_Autore', 'Upvotes', 'Data'],
+    Messaggi: ['ID_Messaggio', 'ID_Mittente', 'ID_Destinatario', 'Testo', 'Timestamp', 'Letto'],
+    Sessioni: ['Token', 'ID_Utente', 'Scadenza']
+  };
+
+  Object.keys(schema).forEach(function (name) {
+    let sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) sheet = spreadsheet.insertSheet(name);
+    const headers = schema[name];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  });
+
+  // rimuove il foglio di default vuoto "Foglio1" se ancora presente
+  const foglioDefault = spreadsheet.getSheetByName('Foglio1') || spreadsheet.getSheetByName('Sheet1');
+  if (foglioDefault && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(foglioDefault);
+
+  // popola qualche riga di esempio nel catalogo, solo se è vuoto
+  const catalogo = spreadsheet.getSheetByName('Catalogo_Accademico');
+  if (catalogo.getLastRow() === 1) {
+    catalogo.getRange(2, 1, 3, 4).setValues([
+      ['C1', 'Informatica', 'Basi di Dati', 'Prof. Rossi'],
+      ['C1', 'Informatica', 'Algoritmi', 'Prof. Bianchi'],
+      ['C2', 'Economia', 'Microeconomia', 'Prof.ssa Verdi']
+    ]);
+  }
+
+  SpreadsheetApp.getUi().alert('Setup completato: fogli creati/verificati con le intestazioni corrette.');
+}
