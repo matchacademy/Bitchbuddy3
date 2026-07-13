@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esami & Compagni</title>
+<base target="_top">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKEN DI DESIGN — "Lavagna universitaria"
+   Sfondo lavagna scura, titoli a gesso, badge come pennarelli
+   evidenziatori, navigazione in fondo che imita le linguette
+   dei fogli di Google Sheets (il vero database dell'app).
+   ============================================================ */
+:root{
+  --bg:#16221C;
+  --bg-panel:#1F2E27;
+  --bg-panel-2:#263A30;
+  --bg-input:#233329;
+  --chalk:#F4F1E4;
+  --chalk-dim:#A9B7AC;
+  --line:rgba(244,241,228,0.14);
+  --line-strong:rgba(244,241,228,0.28);
+  --rosso:#E2572B;
+  --giallo:#F2B705;
+  --blu:#5B9BFF;
+  --verde:#52B788;
+  --accent:#F2B705;
+  --sheet-green:#34A853;
+  --danger:#E2572B;
+  --font-display:'Caveat',cursive;
+  --font-body:'Inter',-apple-system,sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --radius:12px;
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(circle at 15% 20%, rgba(244,241,228,0.035) 0, transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(244,241,228,0.03) 0, transparent 45%),
+    var(--bg);
+  color:var(--chalk);
+  font-family:var(--font-body);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:76px; /* spazio per la tab bar */
+}
+h1,h2,h3,.brand{font-family:var(--font-display);font-weight:700;margin:0;}
+a{color:inherit;}
+button{font-family:var(--font-body);}
+::selection{background:var(--giallo);color:#1B2216;}
+:focus-visible{outline:2px solid var(--giallo);outline-offset:2px;}
+.hidden{display:none !important;}
+.container{max-width:920px;margin:0 auto;padding:0 20px;}
+
+/* ---------- Elementi comuni ---------- */
+.btn{
+  border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14.5px;
+  cursor:pointer;transition:transform .12s ease, opacity .12s ease;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--accent);color:#1B2216;}
+.btn-primary:hover{opacity:.92;}
+.btn-ghost{background:transparent;color:var(--chalk);border:1.5px dashed var(--line-strong);}
+.btn-ghost:hover{border-color:var(--chalk);}
+.btn-danger{background:transparent;color:var(--rosso);border:1.5px solid var(--rosso);}
+.btn-sm{padding:7px 13px;font-size:13px;border-radius:7px;}
+.btn-block{width:100%;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:13px;color:var(--chalk-dim);margin-bottom:6px;font-weight:500;}
+.field input, .field select, .field textarea{
+  width:100%;background:var(--bg-input);border:1px solid var(--line);border-radius:8px;
+  color:var(--chalk);padding:11px 12px;font-size:14.5px;font-family:var(--font-body);
+}
+.field input:focus, .field select:focus, .field textarea:focus{border-color:var(--giallo);}
+.field textarea{resize:vertical;min-height:70px;}
+
+.card{background:var(--bg-panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;}
+.muted{color:var(--chalk-dim);}
+.mono{font-family:var(--font-mono);}
+.error-box{background:rgba(226,87,43,.12);border:1px solid rgba(226,87,43,.4);color:#FFB7A1;
+  border-radius:8px;padding:10px 14px;font-size:13.5px;margin-top:10px;}
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--bg-panel-2);
+  border:1px solid var(--line-strong);border-radius:8px;padding:10px 18px;font-size:13.5px;
+  z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transition:opacity .25s ease, top .25s ease;}
+.toast.show{opacity:1;top:24px;}
+
+/* Badge di stato — stile "pennarello evidenziatore" */
+.badge{
+  display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);
+  font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;padding:5px 11px;
+  border-radius:999px;border:1.5px dashed currentColor;white-space:nowrap;
+}
+.badge.st-prep{color:var(--rosso);}
+.badge.st-inprep{color:var(--giallo);}
+.badge.st-rip{color:var(--blu);}
+.badge.st-fin{color:var(--verde);}
+
+.progress{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:8px;}
+.progress > div{height:100%;border-radius:999px;transition:width .4s ease;}
+
+/* ============================================================
+   SCHERMATA DI ACCESSO
+   ============================================================ */
+#screen-auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;padding-bottom:24px;}
+.auth-wrap{width:100%;max-width:400px;}
+.auth-logo{text-align:center;margin-bottom:26px;}
+.auth-logo .brand{font-size:44px;line-height:1;
+  text-shadow:0 0 1px rgba(244,241,228,.5), 0 0 18px rgba(244,241,228,.18);}
+.auth-logo svg{display:block;margin:6px auto 0;}
+.auth-logo p{color:var(--chalk-dim);font-size:14px;margin-top:6px;}
+.auth-tabs{display:flex;gap:6px;margin-bottom:20px;background:var(--bg-panel);border-radius:10px;padding:4px;}
+.auth-tabs button{flex:1;background:transparent;border:none;color:var(--chalk-dim);padding:10px;border-radius:7px;
+  font-weight:600;font-size:13.5px;cursor:pointer;}
+.auth-tabs button.active{background:var(--bg-input);color:var(--chalk);}
+.auth-panel{display:none;}
+.auth-panel.active{display:block;}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--chalk-dim);font-size:12.5px;}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--line);}
+.guest-note{font-size:13px;color:var(--chalk-dim);text-align:center;margin-top:14px;line-height:1.5;}
+
+/* ============================================================
+   SHELL DELL'APP
+   ============================================================ */
+#app-shell{display:none;min-height:100vh;flex-direction:column;}
+#app-shell.active{display:flex;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);}
+.topbar .brand{font-size:26px;}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.user-chip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--chalk-dim);}
+.user-chip .dot{width:8px;height:8px;border-radius:50%;background:var(--sheet-green);}
+.guest-chip{background:var(--bg-panel-2);color:var(--giallo);font-family:var(--font-mono);font-size:11.5px;
+  padding:4px 10px;border-radius:999px;border:1px dashed var(--giallo);}
+
+.view{padding:22px 20px 40px;max-width:920px;margin:0 auto;width:100%;}
+.view-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+.view-header h2{font-size:30px;}
+.view-header .sub{color:var(--chalk-dim);font-size:14px;}
+
+/* Dashboard: pannello inserimento + lista */
+.dash-grid{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;}
+@media (max-width:760px){.dash-grid{grid-template-columns:1fr;}}
+.materia-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line);}
+.materia-row:last-child{border-bottom:none;}
+.materia-row .m-main{flex:1;min-width:0;}
+.materia-row .m-main .nome{font-weight:600;font-size:15.5px;cursor:pointer;}
+.materia-row .m-main .nome:hover{color:var(--giallo);}
+.materia-row .m-main .note{color:var(--chalk-dim);font-size:12.5px;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.materia-row .m-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.materia-row select.stato-select{background:var(--bg-input);color:var(--chalk);border:1px solid var(--line);
+  border-radius:7px;font-size:12.5px;padding:6px 8px;}
+.empty-state{text-align:center;padding:40px 20px;color:var(--chalk-dim);}
+.empty-state .doodle{font-size:34px;margin-bottom:8px;}
+
+/* Stanza materia */
+.materia-tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);}
+.materia-tabs button{background:transparent;border:none;color:var(--chalk-dim);padding:10px 16px;
+  cursor:pointer;font-weight:600;font-size:14px;border-bottom:2px solid transparent;}
+.materia-tabs button.active{color:var(--chalk);border-color:var(--giallo);}
+.compagno-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);}
+.compagno-row:last-child{border-bottom:none;}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--bg-panel-2);display:flex;align-items:center;
+  justify-content:center;font-weight:700;font-family:var(--font-display);font-size:18px;color:var(--giallo);
+  flex-shrink:0;}
+.faq-item{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:flex-start;}
+.faq-item:last-child{border-bottom:none;}
+.upvote-btn{background:var(--bg-panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;
+  color:var(--chalk);cursor:pointer;font-size:13px;flex-shrink:0;}
+.upvote-btn:hover{border-color:var(--giallo);}
+
+/* Messaggi */
+.conv-list-item{display:flex;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;}
+.conv-list-item:hover{background:var(--bg-panel-2);}
+.chat-thread{display:flex;flex-direction:column;gap:8px;padding:16px;max-height:52vh;overflow-y:auto;}
+.msg{max-width:75%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.4;}
+.msg.mine{align-self:flex-end;background:var(--accent);color:#1B2216;border-bottom-right-radius:3px;}
+.msg.theirs{align-self:flex-start;background:var(--bg-panel-2);border-bottom-left-radius:3px;}
+.chat-input-row{display:flex;gap:8px;padding:14px 16px;border-top:1px solid var(--line);}
+.chat-input-row input{flex:1;}
+
+/* ============================================================
+   TAB BAR IN FONDO — imita le linguette dei fogli Google Sheets
+   ============================================================ */
+.sheet-tabs{
+  position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;gap:3px;
+  background:#101A14;padding:7px 10px 0;overflow-x:auto;border-top:1px solid var(--line);z-index:50;
+}
+.sheet-tabs::-webkit-scrollbar{height:4px;}
+.sheet-tab{
+  background:var(--bg-panel);color:var(--chalk-dim);padding:10px 16px;border-radius:8px 8px 0 0;
+  font-family:var(--font-mono);font-size:12.5px;cursor:pointer;white-space:nowrap;border:1px solid var(--line);
+  border-bottom:none;position:relative;top:1px;display:flex;align-items:center;gap:6px;flex-shrink:0;
+}
+.sheet-tab.active{background:var(--bg);color:var(--chalk);border-color:var(--line-strong);
+  box-shadow:inset 0 3px 0 var(--sheet-green);}
+.sheet-tab .x{opacity:.55;font-size:11px;padding:2px;}
+.sheet-tab .x:hover{opacity:1;color:var(--rosso);}
+
+@media (prefers-reduced-motion: reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- ============================================================
+     SCHERMATA DI ACCESSO
+     ============================================================ -->
+<div id="screen-auth">
+  <div class="auth-wrap">
+    <div class="auth-logo">
+      <div class="brand">Esami &amp; Compagni</div>
+      <svg width="150" height="10" viewBox="0 0 150 10"><path d="M2 6 Q 40 -2, 75 5 T 148 4" stroke="#F2B705" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+      <p>La tua lavagna per organizzare gli esami e trovare compagni di studio.</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button data-auth-tab="login" class="active">Login</button>
+      <button data-auth-tab="register">Registrati</button>
+      <button data-auth-tab="guest">Guest</button>
+    </div>
+
+    <div id="panel-login" class="auth-panel active">
+      <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="mario.rossi@studenti.it"></div>
+      <div class="field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••"></div>
+      <button class="btn btn-primary btn-block" id="btn-login">Accedi</button>
+      <div class="auth-divider">oppure</div>
+      <button class="btn btn-ghost btn-block" id="btn-login-google">Accedi con Google</button>
+      <p class="guest-note"><a href="#" id="link-forgot">Password dimenticata?</a> — il recupero è gestito tramite il tuo account Google quando disponibile.</p>
+      <div id="login-error"></div>
+    </div>
+
+    <div id="panel-register" class="auth-panel">
+      <div class="field"><label>Nome</label><input type="text" id="reg-nome" placeholder="Mario Rossi"></div>
+      <div class="field"><label>Email</label><input type="email" id="reg-email" placeholder="mario.rossi@studenti.it"></div>
+      <div class="field"><label>Password</label><input type="password" id="reg-password" placeholder="Almeno 6 caratteri"></div>
+      <button class="btn btn-primary btn-block" id="btn-register">Crea account</button>
+      <div class="auth-divider">oppure</div>
+      <button class="btn btn-ghost btn-block" id="btn-register-google">Registrati con Google</button>
+      <div id="register-error"></div>
+    </div>
+
+    <div id="panel-guest" class="auth-panel">
+      <p class="muted" style="font-size:14px;line-height:1.5;">Esplora il sito con dati di esempio, in sola lettura. Per aggiungere materie, contattare compagni o rispondere alle FAQ dovrai registrarti.</p>
+      <button class="btn btn-primary btn-block" id="btn-guest">Entra come Guest</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     APP SHELL
+     ============================================================ -->
+<div id="app-shell">
+  <div class="topbar">
+    <div class="brand" style="font-size:24px;">Esami &amp; Compagni</div>
+    <div class="topbar-right">
+      <span id="guest-chip" class="guest-chip hidden">MODALITÀ GUEST</span>
+      <span class="user-chip"><span class="dot"></span><span id="user-name-label">—</span></span>
+      <button class="btn btn-ghost btn-sm" id="btn-logout">Esci</button>
+    </div>
+  </div>
+
+  <!-- VIEW: DASHBOARD -->
+  <div class="view" id="view-dashboard">
+    <div class="view-header">
+      <div><h2>Home Dashboard</h2><div class="sub">Le tue materie, ordinate per data d'esame più vicina.</div></div>
+    </div>
+    <div class="dash-grid">
+      <div class="card" id="panel-aggiungi">
+        <h3 style="font-size:17px;margin-bottom:14px;">Aggiungi materia</h3>
+        <div class="field"><label>Corso</label><select id="sel-corso"><option value="">Seleziona corso…</option></select></div>
+        <div class="field"><label>Materia</label><select id="sel-materia" disabled><option value="">Seleziona prima il corso</option></select></div>
+        <div class="field"><label>Professore</label><select id="sel-prof" disabled><option value="">—</option></select></div>
+        <div class="field"><label>Stato</label>
+          <select id="sel-stato">
+            <option value="Da preparare">Da preparare</option>
+            <option value="In preparazione">In preparazione</option>
+            <option value="Ripetizione">Ripetizione</option>
+            <option value="Fase finale">Fase finale</option>
+          </select>
+        </div>
+        <div class="field"><label>Data esame (opzionale)</label><input type="date" id="inp-data-esame"></div>
+        <div class="field"><label>Note</label><textarea id="inp-note" placeholder="Es. ripassare i capitoli 3-5"></textarea></div>
+        <button class="btn btn-primary btn-block" id="btn-add-materia">Aggiungi</button>
+      </div>
+      <div class="card" style="padding:0;">
+        <div id="lista-materie"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: STANZA MATERIA -->
+  <div class="view hidden" id="view-materia">
+    <div class="view-header">
+      <div><h2 id="materia-titolo">Materia</h2><div class="sub">Compagni di studio e domande frequenti.</div></div>
+      <button class="btn btn-ghost btn-sm" id="btn-share-whatsapp">Condividi su WhatsApp</button>
+    </div>
+    <div class="materia-tabs">
+      <button data-mtab="compagni" class="active">Cerca compagni</button>
+      <button data-mtab="faq">FAQ</button>
+    </div>
+
+    <div id="mtab-compagni">
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label class="muted" style="font-size:13px;">Filtra per fase:</label>
+        <select id="sel-filtro-stato" style="background:var(--bg-input);color:var(--chalk);border:1px solid var(--line);border-radius:7px;padding:7px 10px;font-size:13px;">
+          <option value="">Tutte</option>
+          <option value="Da preparare">Da preparare</option>
+          <option value="In preparazione">In preparazione</option>
+          <option value="Ripetizione">Ripetizione</option>
+          <option value="Fase finale">Fase finale</option>
+        </select>
+      </div>
+      <div class="card" style="padding:0;"><div id="lista-compagni"></div></div>
+    </div>
+
+    <div id="mtab-faq" class="hidden">
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div class="field" style="margin-bottom:8px;"><textarea id="inp-nuova-domanda" placeholder="Scrivi una domanda frequente su questo esame…"></textarea></div>
+        <button class="btn btn-primary btn-sm" id="btn-add-domanda">Pubblica domanda</button>
+      </div>
+      <div class="card" style="padding:0;"><div id="lista-faq"></div></div>
+    </div>
+  </div>
+
+  <!-- VIEW: MESSAGGI -->
+  <div class="view hidden" id="view-messaggi">
+    <div class="view-header"><div><h2>Messaggi</h2><div class="sub">Conversazioni con i tuoi compagni di studio.</div></div></div>
+    <div class="card" style="padding:0;" id="messaggi-lista-wrap">
+      <div id="lista-conversazioni"></div>
+    </div>
+    <div class="card hidden" style="padding:0;margin-top:16px;" id="chat-wrap">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
+        <strong id="chat-con-nome">—</strong>
+        <button class="btn btn-ghost btn-sm" id="btn-chat-chiudi">Chiudi</button>
+      </div>
+      <div class="chat-thread" id="chat-thread"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Scrivi un messaggio…">
+        <button class="btn btn-primary btn-sm" id="btn-chat-invia">Invia</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: IMPOSTAZIONI -->
+  <div class="view hidden" id="view-impostazioni">
+    <div class="view-header"><div><h2>Impostazioni</h2><div class="sub">Profilo, contatti e privacy.</div></div></div>
+    <div class="card" style="max-width:480px;">
+      <div class="field"><label>Nome</label><input type="text" id="set-nome"></div>
+      <div class="field"><label>Email</label><input type="email" id="set-email" disabled></div>
+      <div class="field"><label>Telegram (username)</label><input type="text" id="set-telegram" placeholder="es. mariorossi"></div>
+      <div class="field"><label>WhatsApp (link wa.me)</label><input type="text" id="set-whatsapp" placeholder="es. https://wa.me/391234567890"></div>
+      <div class="field">
+        <label>Privacy contatti</label>
+        <select id="set-privacy">
+          <option value="Pubblico">Pubblico — visibile ai compagni di materia</option>
+          <option value="Privato">Privato — nascosto, solo chat interna</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="btn-save-profilo">Salva modifiche</button>
+      <div id="profilo-msg"></div>
+    </div>
+  </div>
+
+  <!-- TAB BAR STILE GOOGLE SHEETS -->
+  <div class="sheet-tabs" id="sheet-tabs">
+    <div class="sheet-tab active" data-view="dashboard">🏠 Dashboard</div>
+    <div class="sheet-tab" data-view="messaggi">💬 Messaggi</div>
+    <div class="sheet-tab" data-view="impostazioni">⚙️ Impostazioni</div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================================================
+   CACHE LOCALE (localStorage con TTL) — evita di ricaricare
+   il foglio Google ad ogni cambio di tab.
+   ============================================================ */
+const Cache = {
+  set: function (key, value, ttlMs) {
+    try { localStorage.setItem('cache:' + key, JSON.stringify({ v: value, exp: Date.now() + (ttlMs || 60000) })); }
+    catch (e) {}
+  },
+  get: function (key) {
+    try {
+      const raw = localStorage.getItem('cache:' + key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (Date.now() > parsed.exp) { localStorage.removeItem('cache:' + key); return null; }
+      return parsed.v;
+    } catch (e) { return null; }
+  },
+  clear: function (key) { localStorage.removeItem('cache:' + key); },
+  clearPrefix: function (prefix) {
+    Object.keys(localStorage).filter(function (k) { return k.indexOf('cache:' + prefix) === 0; })
+      .forEach(function (k) { localStorage.removeItem(k); });
+  }
+};
+
+/* ============================================================
+   PONTE VERSO IL BACKEND
+   In produzione (incollato in Apps Script) usa google.script.run.
+   In anteprima locale usa un mock in localStorage, cosi il sito
+   è già esplorabile prima ancora del deploy su Apps Script.
+   ============================================================ */
+const HAS_GAS = typeof google !== 'undefined' && !!(google.script && google.script.run);
+
+function serverCall(fn) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  if (HAS_GAS) {
+    return new Promise(function (resolve, reject) {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(function (err) { reject(new Error(err && err.message ? err.message : String(err))); })
+        [fn].apply(null, args);
+    });
+  }
+  return MockBackend[fn].apply(MockBackend, args).catch(function(e){ throw e; });
+}
+
+/* ---------- MOCK BACKEND (solo per anteprima, non è sicuro) ---------- */
+const MockBackend = (function () {
+  const STATI = ['Da preparare', 'In preparazione', 'Ripetizione', 'Fase finale'];
+  function db(name) { try { return JSON.parse(localStorage.getItem('mock:' + name) || '[]'); } catch (e) { return []; } }
+  function save(name, arr) { localStorage.setItem('mock:' + name, JSON.stringify(arr)); }
+  function uid(p) { return p + '_' + Math.random().toString(16).slice(2, 8); }
+  function delay(v) { return new Promise(function (res) { setTimeout(function () { res(v); }, 220 + Math.random() * 180); }); }
+  function fail(msg) { return new Promise(function (res, rej) { setTimeout(function () { rej(new Error(msg)); }, 200); }); }
+
+  function seed() {
+    if (localStorage.getItem('mock:seeded')) return;
+    save('Catalogo_Accademico', [
+      { ID_Corso: 'C1', Nome_Corso: 'Informatica', Materia: 'Basi di Dati', Professore: 'Prof. Rossi' },
+      { ID_Corso: 'C1', Nome_Corso: 'Informatica', Materia: 'Algoritmi', Professore: 'Prof. Bianchi' },
+      { ID_Corso: 'C2', Nome_Corso: 'Economia', Materia: 'Microeconomia', Professore: 'Prof.ssa Verdi' }
+    ]);
+    save('Utenti', [
+      { ID_Utente: 'demoU1', Nome: 'Giulia F.', Email: 'giulia@demo.it', Password_Hash: '', Salt: '', Auth_Provider: 'demo', Telegram_Username: 'giuliaf', WhatsApp_Link: '', Privacy_Status: 'Pubblico' },
+      { ID_Utente: 'demoU2', Nome: 'Marco T.', Email: 'marco@demo.it', Password_Hash: '', Salt: '', Auth_Provider: 'demo', Telegram_Username: '', WhatsApp_Link: 'https://wa.me/391234567890', Privacy_Status: 'Pubblico' }
+    ]);
+    save('Piani_Studio', [
+      { ID_Record: 'demoP1', ID_Utente: 'demoU1', Materia: 'Basi di Dati', Stato: 'Ripetizione', Note: '', Data_Esame: '' },
+      { ID_Record: 'demoP2', ID_Utente: 'demoU2', Materia: 'Basi di Dati', Stato: 'In preparazione', Note: '', Data_Esame: '' }
+    ]);
+    save('Domande_FAQ', [
+      { ID_Domanda: 'demoQ1', Materia: 'Basi di Dati', Testo_Domanda: "Chiede la normalizzazione all'orale?", ID_Utente_Autore: 'demoU1', Upvotes: 4 }
+    ]);
+    save('Messaggi', []);
+    localStorage.setItem('mock:seeded', '1');
+  }
+  seed();
+
+  function currentUserId(token) {
+    const sess = db('Sessioni').find(function (s) { return s.Token === token; });
+    if (!sess) throw new Error('Sessione non valida: effettua di nuovo il login.');
+    return sess.ID_Utente;
+  }
+  function pub(u) {
+    return { ID_Utente: u.ID_Utente, Nome: u.Nome, Email: u.Email, Telegram_Username: u.Telegram_Username, WhatsApp_Link: u.WhatsApp_Link, Privacy_Status: u.Privacy_Status, Auth_Provider: u.Auth_Provider };
+  }
+
+  return {
+    registerUser: function (payload) {
+      const utenti = db('Utenti');
+      const email = String(payload.email || '').trim().toLowerCase();
+      if (!payload.nome || !email || !payload.password) return fail('Compila tutti i campi.');
+      if (utenti.some(function (u) { return String(u.Email).toLowerCase() === email; })) return fail('Esiste già un account con questa email.');
+      const id = uid('U');
+      const u = { ID_Utente: id, Nome: payload.nome, Email: email, Password_Hash: btoa(payload.password), Salt: '', Auth_Provider: 'standard', Telegram_Username: payload.telegram || '', WhatsApp_Link: payload.whatsapp || '', Privacy_Status: 'Pubblico' };
+      utenti.push(u); save('Utenti', utenti);
+      const token = uid('T');
+      const sess = db('Sessioni'); sess.push({ Token: token, ID_Utente: id }); save('Sessioni', sess);
+      return delay({ token: token, user: pub(u) });
+    },
+    loginUser: function (email, password) {
+      const u = db('Utenti').find(function (x) { return String(x.Email).toLowerCase() === String(email).trim().toLowerCase(); });
+      if (!u || u.Auth_Provider !== 'standard' || u.Password_Hash !== btoa(password)) return fail('Credenziali non valide.');
+      const token = uid('T');
+      const sess = db('Sessioni'); sess.push({ Token: token, ID_Utente: u.ID_Utente }); save('Sessioni', sess);
+      return delay({ token: token, user: pub(u) });
+    },
+    loginWithGoogle: function () {
+      const utenti = db('Utenti');
+      let u = utenti.find(function (x) { return x.Auth_Provider === 'google-demo'; });
+      if (!u) {
+        u = { ID_Utente: uid('U'), Nome: 'Utente Google (demo)', Email: 'utente.demo@gmail.com', Auth_Provider: 'google-demo', Telegram_Username: '', WhatsApp_Link: '', Privacy_Status: 'Pubblico' };
+        utenti.push(u); save('Utenti', utenti);
+      }
+      const token = uid('T');
+      const sess = db('Sessioni'); sess.push({ Token: token, ID_Utente: u.ID_Utente }); save('Sessioni', sess);
+      return delay({ token: token, user: pub(u) });
+    },
+    logoutUser: function (token) {
+      save('Sessioni', db('Sessioni').filter(function (s) { return s.Token !== token; }));
+      return delay({ ok: true });
+    },
+    getCurrentUser: function (token) {
+      try { const id = currentUserId(token); const u = db('Utenti').find(function (x) { return x.ID_Utente === id; }); return delay(pub(u)); }
+      catch (e) { return fail(e.message); }
+    },
+    getCatalogo: function () {
+      const righe = db('Catalogo_Accademico'); const out = {};
+      righe.forEach(function (r) {
+        if (!out[r.Nome_Corso]) out[r.Nome_Corso] = {};
+        if (!out[r.Nome_Corso][r.Materia]) out[r.Nome_Corso][r.Materia] = [];
+        if (r.Professore && out[r.Nome_Corso][r.Materia].indexOf(r.Professore) === -1) out[r.Nome_Corso][r.Materia].push(r.Professore);
+      });
+      return delay(out);
+    },
+    getPianiStudio: function (token) {
+      try {
+        const id = currentUserId(token);
+        const piani = db('Piani_Studio').filter(function (p) { return p.ID_Utente === id; })
+          .sort(function (a, b) { const da = a.Data_Esame ? new Date(a.Data_Esame).getTime() : Infinity; const dbb = b.Data_Esame ? new Date(b.Data_Esame).getTime() : Infinity; return da - dbb; });
+        return delay(piani);
+      } catch (e) { return fail(e.message); }
+    },
+    addMateria: function (token, data) {
+      try {
+        const id = currentUserId(token);
+        if (!data.materia || STATI.indexOf(data.stato) === -1) return fail('Dati materia non validi.');
+        const piani = db('Piani_Studio'); const rec = { ID_Record: uid('P'), ID_Utente: id, Materia: data.materia, Stato: data.stato, Note: data.note || '', Data_Esame: data.dataEsame || '' };
+        piani.push(rec); save('Piani_Studio', piani);
+        return delay({ id: rec.ID_Record });
+      } catch (e) { return fail(e.message); }
+    },
+    updateStato: function (token, idRecord, stato) {
+      try {
+        currentUserId(token);
+        const piani = db('Piani_Studio'); const rec = piani.find(function (p) { return p.ID_Record === idRecord; });
+        if (rec) rec.Stato = stato; save('Piani_Studio', piani);
+        return delay({ ok: true });
+      } catch (e) { return fail(e.message); }
+    },
+    updateNote: function (token, idRecord, note) {
+      try {
+        currentUserId(token);
+        const piani = db('Piani_Studio'); const rec = piani.find(function (p) { return p.ID_Record === idRecord; });
+        if (rec) rec.Note = note; save('Piani_Studio', piani);
+        return delay({ ok: true });
+      } catch (e) { return fail(e.message); }
+    },
+    deleteMateria: function (token, idRecord) {
+      try {
+        currentUserId(token);
+        save('Piani_Studio', db('Piani_Studio').filter(function (p) { return p.ID_Record !== idRecord; }));
+        return delay({ ok: true });
+      } catch (e) { return fail(e.message); }
+    },
+    addEsameToCalendar: function () {
+      return delay({ ok: true, note: 'In anteprima locale non è collegato un vero Google Calendar.' });
+    },
+    getFaqByMateria: function (materia) {
+      const faq = db('Domande_FAQ').filter(function (f) { return f.Materia === materia; })
+        .sort(function (a, b) { return (Number(b.Upvotes) || 0) - (Number(a.Upvotes) || 0); });
+      return delay(faq);
+    },
+    addDomanda: function (token, materia, testo) {
+      try {
+        const id = currentUserId(token);
+        if (!testo || !testo.trim()) return fail('Scrivi una domanda prima di inviarla.');
+        const faq = db('Domande_FAQ'); const rec = { ID_Domanda: uid('Q'), Materia: materia, Testo_Domanda: testo, ID_Utente_Autore: id, Upvotes: 0 };
+        faq.push(rec); save('Domande_FAQ', faq);
+        return delay({ id: rec.ID_Domanda });
+      } catch (e) { return fail(e.message); }
+    },
+    upvoteDomanda: function (token, idDomanda) {
+      try {
+        currentUserId(token);
+        const faq = db('Domande_FAQ'); const rec = faq.find(function (f) { return f.ID_Domanda === idDomanda; });
+        if (rec) rec.Upvotes = (Number(rec.Upvotes) || 0) + 1; save('Domande_FAQ', faq);
+        return delay({ upvotes: rec ? rec.Upvotes : 0 });
+      } catch (e) { return fail(e.message); }
+    },
+    getCompagniByMateria: function (token, materia, filtroStato) {
+      try {
+        const myId = currentUserId(token);
+        const piani = db('Piani_Studio').filter(function (p) { return p.Materia === materia && p.ID_Utente !== myId && (!filtroStato || p.Stato === filtroStato); });
+        const utenti = db('Utenti');
+        const out = piani.map(function (p) {
+          const u = utenti.find(function (x) { return x.ID_Utente === p.ID_Utente; });
+          if (!u) return null;
+          return { ID_Utente: u.ID_Utente, Nome: u.Nome, Stato: p.Stato, Privacy_Status: u.Privacy_Status,
+            Telegram_Username: u.Privacy_Status === 'Pubblico' ? u.Telegram_Username : '', WhatsApp_Link: u.Privacy_Status === 'Pubblico' ? u.WhatsApp_Link : '' };
+        }).filter(Boolean);
+        return delay(out);
+      } catch (e) { return fail(e.message); }
+    },
+    getConversazione: function (token, altroId) {
+      try {
+        const myId = currentUserId(token);
+        const msgs = db('Messaggi').filter(function (m) { return (m.ID_Mittente === myId && m.ID_Destinatario === altroId) || (m.ID_Mittente === altroId && m.ID_Destinatario === myId); })
+          .sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); });
+        return delay(msgs);
+      } catch (e) { return fail(e.message); }
+    },
+    inviaMessaggio: function (token, destinatarioId, testo) {
+      try {
+        const myId = currentUserId(token);
+        if (!testo || !testo.trim()) return fail('Il messaggio è vuoto.');
+        const msgs = db('Messaggi'); const rec = { ID_Messaggio: uid('M'), ID_Mittente: myId, ID_Destinatario: destinatarioId, Testo: testo, Timestamp: new Date().toISOString(), Letto: false };
+        msgs.push(rec); save('Messaggi', msgs);
+        return delay({ id: rec.ID_Messaggio });
+      } catch (e) { return fail(e.message); }
+    },
+    getConversazioniRecenti: function (token) {
+      try {
+        const myId = currentUserId(token);
+        const msgs = db('Messaggi').filter(function (m) { return m.ID_Mittente === myId || m.ID_Destinatario === myId; });
+        const utenti = db('Utenti'); const perAltro = {};
+        msgs.forEach(function (m) {
+          const altroId = m.ID_Mittente === myId ? m.ID_Destinatario : m.ID_Mittente;
+          const t = new Date(m.Timestamp).getTime();
+          if (!perAltro[altroId] || t > perAltro[altroId].t) perAltro[altroId] = { t: t, ultimo: m.Testo };
+        });
+        const out = Object.keys(perAltro).map(function (altroId) {
+          const u = utenti.find(function (x) { return x.ID_Utente === altroId; });
+          return { ID_Utente: altroId, Nome: u ? u.Nome : 'Utente', ultimo: perAltro[altroId].ultimo };
+        });
+        return delay(out);
+      } catch (e) { return fail(e.message); }
+    },
+    getProfilo: function (token) { return this.getCurrentUser(token); },
+    updateProfilo: function (token, data) {
+      try {
+        const id = currentUserId(token);
+        const utenti = db('Utenti'); const u = utenti.find(function (x) { return x.ID_Utente === id; });
+        if (u) { if (data.nome) u.Nome = data.nome; if (data.telegram !== undefined) u.Telegram_Username = data.telegram; if (data.whatsapp !== undefined) u.WhatsApp_Link = data.whatsapp; if (data.privacy) u.Privacy_Status = data.privacy; }
+        save('Utenti', utenti);
+        return delay(pub(u));
+      } catch (e) { return fail(e.message); }
+    },
+    getDemoData: function () {
+      return delay({
+        catalogo: { 'Informatica': { 'Basi di Dati': ['Prof. Rossi'], 'Algoritmi': ['Prof. Bianchi'] } },
+        piani: [
+          { ID_Record: 'g1', Materia: 'Basi di Dati', Stato: 'In preparazione', Note: 'Ripassare le JOIN', Data_Esame: '' },
+          { ID_Record: 'g2', Materia: 'Algoritmi', Stato: 'Da preparare', Note: '', Data_Esame: '' }
+        ],
+        faq: [{ ID_Domanda: 'gq1', Materia: 'Basi di Dati', Testo_Domanda: "Chiede la normalizzazione all'orale?", Upvotes: 4 }]
+      });
+    }
+  };
+})();
+
+/* ============================================================
+   STATO GLOBALE
+   ============================================================ */
+const State = { token: null, user: null, isGuest: false, catalogo: {}, piani: [], currentMateria: null, chatCon: null };
+
+function toast(msg) {
+  const el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(function () { el.classList.remove('show'); }, 2400);
+}
+function statoInfo(stato) {
+  const map = {
+    'Da preparare': { cls: 'st-prep', pct: 10, color: 'var(--rosso)' },
+    'In preparazione': { cls: 'st-inprep', pct: 45, color: 'var(--giallo)' },
+    'Ripetizione': { cls: 'st-rip', pct: 75, color: 'var(--blu)' },
+    'Fase finale': { cls: 'st-fin', pct: 100, color: 'var(--verde)' }
+  };
+  return map[stato] || map['Da preparare'];
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+
+/* ============================================================
+   AUTENTICAZIONE — tab login/registrati/guest
+   ============================================================ */
+document.querySelectorAll('[data-auth-tab]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('[data-auth-tab]').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.auth-panel').forEach(function (p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.authTab).classList.add('active');
+  });
+});
+
+document.getElementById('btn-login').addEventListener('click', function () {
+  const email = document.getElementById('login-email').value.trim();
+  const pw = document.getElementById('login-password').value;
+  const errBox = document.getElementById('login-error'); errBox.innerHTML = '';
+  if (!email || !pw) { errBox.innerHTML = '<div class="error-box">Inserisci email e password.</div>'; return; }
+  serverCall('loginUser', email, pw).then(function (res) { onAuthSuccess(res, false); })
+    .catch(function (e) { errBox.innerHTML = '<div class="error-box">' + esc(e.message) + '</div>'; });
+});
+
+document.getElementById('btn-register').addEventListener('click', function () {
+  const payload = { nome: document.getElementById('reg-nome').value.trim(), email: document.getElementById('reg-email').value.trim(), password: document.getElementById('reg-password').value };
+  const errBox = document.getElementById('register-error'); errBox.innerHTML = '';
+  if (!payload.nome || !payload.email || payload.password.length < 6) { errBox.innerHTML = '<div class="error-box">Compila nome, email e una password di almeno 6 caratteri.</div>'; return; }
+  serverCall('registerUser', payload).then(function (res) { onAuthSuccess(res, false); })
+    .catch(function (e) { errBox.innerHTML = '<div class="error-box">' + esc(e.message) + '</div>'; });
+});
+
+document.getElementById('btn-login-google').addEventListener('click', googleAuth);
+document.getElementById('btn-register-google').addEventListener('click', googleAuth);
+function googleAuth() {
+  serverCall('loginWithGoogle').then(function (res) { onAuthSuccess(res, false); })
+    .catch(function (e) { toast(e.message); });
+}
+
+document.getElementById('btn-guest').addEventListener('click', function () {
+  serverCall('getDemoData').then(function (demo) {
+    State.isGuest = true; State.token = null; State.user = { Nome: 'Ospite' };
+    State.catalogo = demo.catalogo; State.piani = demo.piani; State._demoFaq = demo.faq;
+    enterApp();
+  });
+});
+
+function onAuthSuccess(res, isGuest) {
+  State.token = res.token; State.user = res.user; State.isGuest = !!isGuest;
+  Cache.clearPrefix(''); // sessione nuova: dati precedenti in cache non sono più validi
+  enterApp();
+}
+
+document.getElementById('btn-logout').addEventListener('click', function () {
+  if (State.token) serverCall('logoutUser', State.token).catch(function () {});
+  Cache.clearPrefix('');
+  State.token = null; State.user = null; State.isGuest = false;
+  document.getElementById('app-shell').classList.remove('active');
+  document.getElementById('screen-auth').style.display = 'flex';
+});
+
+/* ============================================================
+   AVVIO APP
+   ============================================================ */
+function enterApp() {
+  document.getElementById('screen-auth').style.display = 'none';
+  document.getElementById('app-shell').classList.add('active');
+  document.getElementById('user-name-label').textContent = State.user.Nome || 'Utente';
+  document.getElementById('guest-chip').classList.toggle('hidden', !State.isGuest);
+  document.querySelectorAll('.sheet-tab[data-view="messaggi"]').forEach(function(t){ t.style.opacity = State.isGuest ? .4 : 1; });
+
+  loadCatalogo().then(function () {
+    populateCorsoSelect();
+    if (!State.isGuest) loadPiani().then(renderDashboard); else renderDashboard();
+  });
+
+  document.getElementById('set-nome').value = State.user.Nome || '';
+  document.getElementById('set-email').value = State.user.Email || '';
+  document.getElementById('set-telegram').value = State.user.Telegram_Username || '';
+  document.getElementById('set-whatsapp').value = State.user.WhatsApp_Link || '';
+  document.getElementById('set-privacy').value = State.user.Privacy_Status || 'Pubblico';
+}
+
+function loadCatalogo() {
+  const cached = Cache.get('catalogo');
+  if (cached) { State.catalogo = cached; return Promise.resolve(); }
+  return serverCall('getCatalogo').then(function (cat) { State.catalogo = cat; Cache.set('catalogo', cat, 24 * 3600 * 1000); });
+}
+function loadPiani(force) {
+  if (!force) { const cached = Cache.get('piani'); if (cached) { State.piani = cached; return Promise.resolve(); } }
+  return serverCall('getPianiStudio', State.token).then(function (p) { State.piani = p; Cache.set('piani', p, 60 * 1000); });
+}
+
+/* ============================================================
+   NAVIGAZIONE — tab bar in stile Google Sheets
+   ============================================================ */
+function showView(name) {
+  document.querySelectorAll('.view').forEach(function (v) { v.classList.add('hidden'); });
+  document.getElementById('view-' + name).classList.remove('hidden');
+  document.querySelectorAll('.sheet-tab[data-view]').forEach(function (t) { t.classList.toggle('active', t.dataset.view === name); });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (name === 'messaggi') { if (State.isGuest) { toast('Registrati per usare i messaggi.'); showView('dashboard'); return; } loadConversazioni(); }
+}
+document.getElementById('sheet-tabs').addEventListener('click', function (e) {
+  const tab = e.target.closest('.sheet-tab[data-view]');
+  if (tab) showView(tab.dataset.view);
+});
+
+function addMateriaTab(nome) {
+  let tab = document.querySelector('.sheet-tab[data-materia="' + CSS.escape(nome) + '"]');
+  if (!tab) {
+    tab = document.createElement('div');
+    tab.className = 'sheet-tab';
+    tab.dataset.materia = nome;
+    tab.innerHTML = '<span>📑 ' + esc(nome) + '</span><span class="x">✕</span>';
+    tab.addEventListener('click', function (e) {
+      if (e.target.classList.contains('x')) { tab.remove(); if (State.currentMateria === nome) showView('dashboard'); return; }
+      openMateria(nome);
+    });
+    document.getElementById('sheet-tabs').appendChild(tab);
+  }
+  document.querySelectorAll('.sheet-tab').forEach(function (t) { t.classList.remove('active'); });
+  tab.classList.add('active');
+}
+
+/* ============================================================
+   DASHBOARD — menu a cascata + lista materie
+   ============================================================ */
+function populateCorsoSelect() {
+  const sel = document.getElementById('sel-corso');
+  sel.innerHTML = '<option value="">Seleziona corso…</option>';
+  Object.keys(State.catalogo).forEach(function (corso) {
+    const opt = document.createElement('option'); opt.value = corso; opt.textContent = corso; sel.appendChild(opt);
+  });
+}
+document.getElementById('sel-corso').addEventListener('change', function () {
+  const corso = this.value;
+  const selMateria = document.getElementById('sel-materia'), selProf = document.getElementById('sel-prof');
+  selMateria.innerHTML = ''; selProf.innerHTML = '<option value="">—</option>'; selProf.disabled = true;
+  if (!corso) { selMateria.innerHTML = '<option value="">Seleziona prima il corso</option>'; selMateria.disabled = true; return; }
+  selMateria.disabled = false;
+  selMateria.innerHTML = '<option value="">Seleziona materia…</option>';
+  Object.keys(State.catalogo[corso]).forEach(function (materia) {
+    const opt = document.createElement('option'); opt.value = materia; opt.textContent = materia; selMateria.appendChild(opt);
+  });
+});
+document.getElementById('sel-materia').addEventListener('change', function () {
+  const corso = document.getElementById('sel-corso').value, materia = this.value;
+  const selProf = document.getElementById('sel-prof');
+  selProf.innerHTML = '';
+  if (!corso || !materia) { selProf.innerHTML = '<option value="">—</option>'; selProf.disabled = true; return; }
+  const profs = State.catalogo[corso][materia] || [];
+  selProf.disabled = profs.length === 0;
+  selProf.innerHTML = profs.length ? '' : '<option value="">Nessuno indicato</option>';
+  profs.forEach(function (p) { const opt = document.createElement('option'); opt.value = p; opt.textContent = p; selProf.appendChild(opt); });
+});
+
+document.getElementById('btn-add-materia').addEventListener('click', function () {
+  if (State.isGuest) { toast('Registrati per aggiungere materie.'); return; }
+  const materia = document.getElementById('sel-materia').value;
+  const stato = document.getElementById('sel-stato').value;
+  const note = document.getElementById('inp-note').value.trim();
+  const dataEsame = document.getElementById('inp-data-esame').value;
+  if (!materia) { toast('Seleziona corso e materia.'); return; }
+  const btn = this; btn.disabled = true;
+  serverCall('addMateria', State.token, { materia: materia, stato: stato, note: note, dataEsame: dataEsame })
+    .then(function () { Cache.clear('piani'); document.getElementById('inp-note').value = ''; return loadPiani(true); })
+    .then(function () { renderDashboard(); toast('Materia aggiunta.'); })
+    .catch(function (e) { toast(e.message); })
+    .finally(function () { btn.disabled = false; });
+});
+
+function renderDashboard() {
+  const wrap = document.getElementById('lista-materie');
+  const dati = State.isGuest ? State.piani : State.piani;
+  if (!dati || !dati.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="doodle">🗒️</div>Nessuna materia ancora. Aggiungine una dal pannello a sinistra.</div>';
+    return;
+  }
+  wrap.innerHTML = dati.map(function (p) {
+    const info = statoInfo(p.Stato);
+    return '' +
+      '<div class="materia-row">' +
+        '<div class="m-main">' +
+          '<div class="nome" data-open-materia="' + esc(p.Materia) + '">' + esc(p.Materia) + '</div>' +
+          (p.Note ? '<div class="note">' + esc(p.Note) + '</div>' : '') +
+          '<div class="progress"><div style="width:' + info.pct + '%;background:' + info.color + ';"></div></div>' +
+        '</div>' +
+        '<div class="m-actions">' +
+          '<span class="badge ' + info.cls + '">' + esc(p.Stato) + '</span>' +
+          (State.isGuest ? '' :
+            '<select class="stato-select" data-stato-for="' + p.ID_Record + '">' +
+              ['Da preparare','In preparazione','Ripetizione','Fase finale'].map(function(s){ return '<option value="'+s+'"'+(s===p.Stato?' selected':'')+'>'+s+'</option>'; }).join('') +
+            '</select>' +
+            (p.Stato === 'Fase finale' ? '<button class="btn btn-ghost btn-sm" data-cal-for="' + p.ID_Record + '">📅 Aggiungi al calendario</button>' : '') +
+            '<button class="btn btn-danger btn-sm" data-del-for="' + p.ID_Record + '">Elimina</button>'
+          ) +
+        '</div>' +
+      '</div>';
+  }).join('');
+
+  wrap.querySelectorAll('[data-open-materia]').forEach(function (el) { el.addEventListener('click', function () { openMateria(el.dataset.openMateria); }); });
+  wrap.querySelectorAll('[data-stato-for]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      serverCall('updateStato', State.token, el.dataset.statoFor, el.value)
+        .then(function () { Cache.clear('piani'); return loadPiani(true); })
+        .then(renderDashboard).catch(function (e) { toast(e.message); });
+    });
+  });
+  wrap.querySelectorAll('[data-del-for]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      if (!confirm('Eliminare questa materia dal tuo piano di studio?')) return;
+      serverCall('deleteMateria', State.token, el.dataset.delFor)
+        .then(function () { Cache.clear('piani'); return loadPiani(true); })
+        .then(function(){ renderDashboard(); toast('Materia eliminata.'); }).catch(function (e) { toast(e.message); });
+    });
+  });
+  wrap.querySelectorAll('[data-cal-for]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      serverCall('addEsameToCalendar', State.token, el.dataset.calFor)
+        .then(function (r) { toast(r.note || 'Evento aggiunto a Google Calendar.'); }).catch(function (e) { toast(e.message); });
+    });
+  });
+}
+
+/* ============================================================
+   STANZA MATERIA — compagni + FAQ
+   ============================================================ */
+function openMateria(nome) {
+  if (State.isGuest) { toast('Registrati per accedere ai compagni di studio.'); document.querySelector('[data-auth-tab="register"]'); return; }
+  State.currentMateria = nome;
+  document.getElementById('materia-titolo').textContent = nome;
+  showView('materia');
+  addMateriaTab(nome);
+  document.querySelectorAll('[data-mtab]')[0].click();
+  document.getElementById('sel-filtro-stato').value = '';
+  loadCompagni();
+  loadFaq();
+}
+document.querySelectorAll('[data-mtab]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('[data-mtab]').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('mtab-compagni').classList.toggle('hidden', btn.dataset.mtab !== 'compagni');
+    document.getElementById('mtab-faq').classList.toggle('hidden', btn.dataset.mtab !== 'faq');
+  });
+});
+document.getElementById('sel-filtro-stato').addEventListener('change', loadCompagni);
+
+function loadCompagni() {
+  const filtro = document.getElementById('sel-filtro-stato').value;
+  const wrap = document.getElementById('lista-compagni');
+  wrap.innerHTML = '<div class="empty-state">Caricamento…</div>';
+  serverCall('getCompagniByMateria', State.token, State.currentMateria, filtro).then(function (lista) {
+    if (!lista.length) { wrap.innerHTML = '<div class="empty-state"><div class="doodle">🧑‍🎓</div>Nessun compagno trovato per questa fase.</div>'; return; }
+    wrap.innerHTML = lista.map(function (u) {
+      const iniziale = (u.Nome || '?').charAt(0).toUpperCase();
+      const info = statoInfo(u.Stato);
+      const contatti = [
+        u.Telegram_Username ? '<a href="https://t.me/' + esc(u.Telegram_Username) + '" target="_blank" class="btn btn-ghost btn-sm">Telegram</a>' : '',
+        u.WhatsApp_Link ? '<a href="' + esc(u.WhatsApp_Link) + '" target="_blank" class="btn btn-ghost btn-sm">WhatsApp</a>' : ''
+      ].join('');
+      return '' +
+        '<div class="compagno-row">' +
+          '<div class="avatar">' + esc(iniziale) + '</div>' +
+          '<div style="flex:1;"><div style="font-weight:600;">' + esc(u.Nome) + '</div><span class="badge ' + info.cls + '" style="margin-top:4px;">' + esc(u.Stato) + '</span></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + contatti + '<button class="btn btn-primary btn-sm" data-chat-with="' + u.ID_Utente + '" data-chat-name="' + esc(u.Nome) + '">Scrivi</button></div>' +
+        '</div>';
+    }).join('');
+    wrap.querySelectorAll('[data-chat-with]').forEach(function (el) {
+      el.addEventListener('click', function () { showView('messaggi'); openChat(el.dataset.chatWith, el.dataset.chatName); });
+    });
+  }).catch(function (e) { wrap.innerHTML = '<div class="error-box">' + esc(e.message) + '</div>'; });
+}
+
+function loadFaq() {
+  const wrap = document.getElementById('lista-faq');
+  wrap.innerHTML = '<div class="empty-state">Caricamento…</div>';
+  serverCall('getFaqByMateria', State.currentMateria).then(function (lista) {
+    if (!lista.length) { wrap.innerHTML = '<div class="empty-state"><div class="doodle">❓</div>Nessuna domanda ancora. Sii il primo a chiederne una.</div>'; return; }
+    wrap.innerHTML = lista.map(function (f) {
+      return '' +
+        '<div class="faq-item">' +
+          '<button class="upvote-btn" data-upvote="' + f.ID_Domanda + '">▲ ' + (Number(f.Upvotes) || 0) + '</button>' +
+          '<div>' + esc(f.Testo_Domanda) + '</div>' +
+        '</div>';
+    }).join('');
+    wrap.querySelectorAll('[data-upvote]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        serverCall('upvoteDomanda', State.token, el.dataset.upvote).then(loadFaq).catch(function (e) { toast(e.message); });
+      });
+    });
+  }).catch(function (e) { wrap.innerHTML = '<div class="error-box">' + esc(e.message) + '</div>'; });
+}
+
+document.getElementById('btn-add-domanda').addEventListener('click', function () {
+  const testo = document.getElementById('inp-nuova-domanda').value.trim();
+  if (!testo) { toast('Scrivi prima una domanda.'); return; }
+  serverCall('addDomanda', State.token, State.currentMateria, testo)
+    .then(function () { document.getElementById('inp-nuova-domanda').value = ''; loadFaq(); toast('Domanda pubblicata.'); })
+    .catch(function (e) { toast(e.message); });
+});
+
+document.getElementById('btn-share-whatsapp').addEventListener('click', function () {
+  const testo = encodeURIComponent('Ciao! Stai preparando "' + State.currentMateria + '"? Unisciti a me su Esami & Compagni per trovare compagni di studio: ' + location.href);
+  window.open('https://wa.me/?text=' + testo, '_blank');
+});
+
+/* ============================================================
+   MESSAGGI
+   ============================================================ */
+function loadConversazioni() {
+  const wrap = document.getElementById('lista-conversazioni');
+  wrap.innerHTML = '<div class="empty-state">Caricamento…</div>';
+  serverCall('getConversazioniRecenti', State.token).then(function (lista) {
+    if (!lista.length) { wrap.innerHTML = '<div class="empty-state"><div class="doodle">💬</div>Nessuna conversazione ancora. Scrivi a un compagno dalla stanza materia.</div>'; return; }
+    wrap.innerHTML = lista.map(function (c) {
+      return '<div class="conv-list-item" data-chat-with="' + c.ID_Utente + '" data-chat-name="' + esc(c.Nome) + '">' +
+        '<div class="avatar">' + esc((c.Nome || '?').charAt(0).toUpperCase()) + '</div>' +
+        '<div style="flex:1;"><div style="font-weight:600;">' + esc(c.Nome) + '</div><div class="muted" style="font-size:12.5px;">' + esc(c.ultimo) + '</div></div>' +
+      '</div>';
+    }).join('');
+    wrap.querySelectorAll('[data-chat-with]').forEach(function (el) {
+      el.addEventListener('click', function () { openChat(el.dataset.chatWith, el.dataset.chatName); });
+    });
+  });
+}
+
+function openChat(altroId, nome) {
+  State.chatCon = altroId;
+  document.getElementById('chat-con-nome').textContent = nome;
+  document.getElementById('chat-wrap').classList.remove('hidden');
+  refreshChat();
+}
+document.getElementById('btn-chat-chiudi').addEventListener('click', function () { document.getElementById('chat-wrap').classList.add('hidden'); State.chatCon = null; });
+function refreshChat() {
+  serverCall('getConversazione', State.token, State.chatCon).then(function (msgs) {
+    const thread = document.getElementById('chat-thread');
+    thread.innerHTML = msgs.map(function (m) {
+      return '<div class="msg ' + (m.ID_Mittente === State.user.ID_Utente ? 'mine' : 'theirs') + '">' + esc(m.Testo) + '</div>';
+    }).join('');
+    thread.scrollTop = thread.scrollHeight;
+  });
+}
+document.getElementById('btn-chat-invia').addEventListener('click', inviaChat);
+document.getElementById('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') inviaChat(); });
+function inviaChat() {
+  const input = document.getElementById('chat-input');
+  const testo = input.value.trim();
+  if (!testo || !State.chatCon) return;
+  input.value = '';
+  serverCall('inviaMessaggio', State.token, State.chatCon, testo).then(refreshChat).then(loadConversazioni).catch(function (e) { toast(e.message); });
+}
+
+/* ============================================================
+   IMPOSTAZIONI
+   ============================================================ */
+document.getElementById('btn-save-profilo').addEventListener('click', function () {
+  if (State.isGuest) { toast('Registrati per modificare il profilo.'); return; }
+  const payload = {
+    nome: document.getElementById('set-nome').value.trim(),
+    telegram: document.getElementById('set-telegram').value.trim(),
+    whatsapp: document.getElementById('set-whatsapp').value.trim(),
+    privacy: document.getElementById('set-privacy').value
+  };
+  serverCall('updateProfilo', State.token, payload).then(function (u) {
+    State.user = u; document.getElementById('user-name-label').textContent = u.Nome;
+    document.getElementById('profilo-msg').innerHTML = '<div class="guest-note" style="color:var(--verde);">Profilo aggiornato.</div>';
+    setTimeout(function(){ document.getElementById('profilo-msg').innerHTML=''; }, 2500);
+  }).catch(function (e) { toast(e.message); });
+});
+
+if (!HAS_GAS) { console.info('[Esami & Compagni] Anteprima locale attiva: i dati sono simulati in localStorage. Incolla questo file in Apps Script per collegarlo al vero Google Sheet.'); }
+
+})();
+</script>
+</body>
+</html>
